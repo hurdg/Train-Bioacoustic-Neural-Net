@@ -7,7 +7,7 @@ Overview of user interface:
 <br>
 The interface contains features that facilitate navigation through audio recordings. 
 <br>
-![]((https://github.com/hurdg/Train-Bioacoustic-Neural-Net/blob/main/images/ProcessFlowchart.png)) 
+![](https://github.com/hurdg/Train-Bioacoustic-Neural-Net/blob/main/images/ProcessFlowchart.png)
 <br>
 <br>
 The interface also supports both manual and automated classification. Automated classification is based on the neural networks predictions in relation a user-defined threshold value. An upper and lower threshold value can be specified. In the case of a conflict between the manual and automated classifications, priority will be given to the former.
