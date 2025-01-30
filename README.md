@@ -8,7 +8,8 @@ A running log of the top scoring validation metric is additionally recorded base
 <br>
 ---
 <br>
-OVerview of training process:
+Overview of training process:
 <br>
 <br>
 ![](https://github.com/hurdg/Train-Bioacoustic-Neural-Net/blob/main/images/ProcessFlowchart.png)
+![](https://github.com/hurdg/amphibian-bioacoustics-user-interface/blob/main/images/UI_annotation1.png) 
