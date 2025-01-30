@@ -2,14 +2,14 @@ This is a program to train a convulutional neural network for acoustic recording
 <br>
 <br>
 ---
-Overview of user interface:
+Overview of training process:
 <br>
 <br>
-The interface contains features that facilitate navigation through audio recordings. 
+The program implements best-practices in the training procedure. Parameters at each step can be customized and/or included in the hyperparameter optimization. 
 <br>
 ![](https://github.com/hurdg/Train-Bioacoustic-Neural-Net/blob/main/images/ProcessFlowchart.png)
 <br>
 <br>
-The interface also supports both manual and automated classification. Automated classification is based on the neural networks predictions in relation a user-defined threshold value. An upper and lower threshold value can be specified. In the case of a conflict between the manual and automated classifications, priority will be given to the former.
+Training iterations can be monitored real-time through the weights and biases platform
 <br>
-![](https://github.com/hurdg/amphibian-bioacoustics-user-interface/blob/main/images/UI_annotation2.png)
+![](https://github.com/hurdg/Train-Bioacoustic-Neural-Net/blob/main/images/wandb_snip.png)
