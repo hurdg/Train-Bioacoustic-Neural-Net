@@ -4,3 +4,11 @@ Users are also able to specify the number of cross-validation folds to use durin
 Training and validation results are logged through the Weights & Biases platform.
 Training and validation logging occurs following every epoch.
 A running log of the top scoring validation metric is additionally recorded based on the validation loss score.
+<br>
+<br>
+---
+<br>
+OVerview of training process:
+<br>
+<br>
+![](https://github.com/hurdg/Train-Bioacoustic-Neural-Net/blob/main/images/ProcessFlowchart.png)
