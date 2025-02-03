@@ -4,6 +4,8 @@ import torch.nn as nn
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedGroupKFold
+
 import wandb
 import os
 
@@ -13,7 +15,7 @@ from train import train
 
 # Define sweep configuration
 sweep_configuration = {
-    "name": "weto_sweep_revised",
+    "name": "weto",
     "method": "grid",
     #"metric": {"goal": "maximize", "name": "validation.f1"},
     "parameters": {
@@ -34,15 +36,15 @@ sweep_configuration = {
                 'frequency_mask_bypass' : {"values": [False]},
                 'add_noise_bypass' : {"values": [True, False]},
                 'rescale_bypass' : {"values": [True, False]}, 
-                'random_affine_bypass' : {"values": [True, False]},
+                'random_affine_bypass' : {"values": [True]},
 
                 #Hyperparameters
                 'dropout'  : {"values": [False]},
                 'weight_decay'  : {"values": [1e-2]},
                 #'learning_rate' : {"values": [1e-4, 1e-5]},
                 'learning_rate' : {"values": [1e-3, 1e-4, 1e-5]},
-                'stop_patience'  : {"values": [6]},
-                'stop_delta'  : {"values": [0.1]},
+                'stop_patience'  : {"values": [10]},
+                'stop_delta'  : {"values": [0]},
 
                 #'lr' : {"values": [0.005, 0.01, 0.02]}, # Default = 0.01
                 #'lr_cooling_factor' : {"values": [0.035, 0.7, 0.14]}, # Default = 0.7
@@ -50,7 +52,7 @@ sweep_configuration = {
                 #'momentum' : {"values": [0.9]}, #leaky  Default = 0.9
                 #'weight_decay' : {"values": [0.00025, 0.0005, 0.001]}, #l2 regularization Default = 0.0005
                 
-                'architecture' :{"values": ['resnet34', 'resnet50', 'resnet101',]}, 
+                'architecture' :{"values": ['resnet34']}, 
                 'height' :{"values": [224]}, 
                 'width' :{"values": [224]},
                 "n_balance":{"values":[1000]},
@@ -66,7 +68,7 @@ def cross_validate():
 #--Sweep environment
     #Set name of run
     count = get_count()
-    sweep_run_name = " ".join(['weto_sweep_revised','run', str(count)])
+    sweep_run_name = " ".join(['weto','run', str(count)])
 
     sweep_run = wandb.init()
     sweep_run.name = sweep_run_name
@@ -81,11 +83,12 @@ def cross_validate():
     train_metrics = {'train_acc':[], 'train_prc':[], 'train_rec':[], 'train_loss': []}
 
     #Get all training data
-    labeled_df = get_TrainData(data_dir = os.path.join(os.path.dirname(os.getcwd()), 'data'))
+    labeled_df = get_TrainData(data_dir = os.path.join(os.path.dirname(os.getcwd()), 'data2'))
 
     #Split for cross validation, stratify with respect to presence
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    for fold, (train_idx, val_idx) in enumerate(skf.split(labeled_df, y = labeled_df['presence']), 1):
+    #skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+    for fold, (train_idx, val_idx) in enumerate(sgkf.split(labeled_df, labeled_df['presence'], labeled_df['group']), 1):
         train_df = get_balancedDF(labeled_df.iloc[train_idx], balance=True, n_balance = config['n_balance'], single_class=True, type = 'train')
         valid_df = get_balancedDF(labeled_df.iloc[val_idx], balance=False, n_balance = config['n_balance'], single_class=True, type = 'validation')
         reset_wandb_env()
@@ -109,6 +112,8 @@ def cross_validate():
                        val_precision=sum(val_metrics['val_prc']) / len(val_metrics['val_prc']),
                        val_recall=sum(val_metrics['val_rec']) / len(val_metrics['val_rec']),
                        val_loss=sum(val_metrics['val_loss']) / len(val_metrics['val_loss']),
+                       val_specificity=sum(val_metrics['val_spc']) / len(val_metrics['val_spc']),
+                       val_macro_accuracy=sum(val_metrics['val_macro_acc']) / len(val_metrics['val_macro_acc']),
                        train_accuracy=sum(train_metrics['train_acc']) / len(train_metrics['train_acc']),
                        train_precision=sum(train_metrics['train_prc']) / len(train_metrics['train_prc']),
                        train_recall=sum(train_metrics['train_rec']) / len(train_metrics['train_rec']),
@@ -131,7 +136,7 @@ def main():
 
         #Initiate a new sweep with specified parameters (above)
         wandb.login()
-        sweep_id = wandb.sweep(sweep_configuration, project='weto_sweep_revised')
+        sweep_id = wandb.sweep(sweep_configuration, project='weto')
         wandb.agent(sweep_id, function=cross_validate)
 
     else:
