@@ -4,6 +4,8 @@ import torch.nn as nn
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedGroupKFold
+
 import wandb
 import os
 
