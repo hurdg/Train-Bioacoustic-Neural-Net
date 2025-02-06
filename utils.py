@@ -8,6 +8,7 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import sklearn
+import re
 
 import os
 counter = 0
@@ -34,7 +35,7 @@ def get_TrainData(data_dir, balance:bool=False, n_balance = int, single_class:bo
 #---
 
     #Define dict of filepaths and presence status (pos/neg) to be populated within loops
-    filepath_presence_dict = {"filepath":[], "presence":[]}
+    filepath_presence_dict = {"filepath":[], "presence":[], 'group':[]}
 
     #Define path to main training data folder
     #weto_train_dir = os.path.join(data_dir, 'weto', 'train')
@@ -47,18 +48,26 @@ def get_TrainData(data_dir, balance:bool=False, n_balance = int, single_class:bo
         #Create list of audio files in specified directory (pos/neg)
         filenames = os.listdir(set_dir)
 
-        #Append filepaths and presence status to dict (empty, if first run through parent loop)
+        #Append filepaths, presence status, and group to dict (empty, if first run through parent loop)
         filepath_list = filepath_presence_dict["filepath"]
         presence_list = filepath_presence_dict["presence"]
+        group_list = filepath_presence_dict["group"]
 
         #Loop through filenames to create list of filepaths and presence status
         for name in filenames:
             #Define filepath and append to list
             filepath = os.path.join(set_dir, name)
             filepath_list.append(filepath)
+            
+            #Extract group id from filename and append to list
+            groupname = re.findall(r'_G(.*?)\.wav', name).pop()
+            group_list.append(groupname)
 
         #Append list to dict, as a value to 'filepath' key
         filepath_presence_dict.update({'filepath': filepath_list})
+
+        #Append list to dict, as a value to 'group' key
+        filepath_presence_dict.update({'group': group_list})
 
                 #Create sequence of presence status values (pos/neg) of equal length to filepath list and append to dict, as a value to 'presence' key
         if set_key == "positive":
@@ -78,7 +87,7 @@ def get_balancedDF(df, balance:bool, n_balance, single_class:bool, type:str):
     n_pos = len(df[df['presence']==1])
     n_neg = len(df[df['presence']==0])
     dummy_df = pd.get_dummies(df, prefix="", prefix_sep='', columns=['presence'], dtype = int)
-
+    dummy_df = dummy_df.drop('group', axis = 1)
     #Drop/repeat samples to the training set, if desired. THis is helpful to ensure balance among the classes (improves model performance)
     if balance:
         dummy_df = opensoundscape.data_selection.resample(dummy_df,n_samples_per_class=n_balance,random_state=0)
@@ -89,7 +98,8 @@ def get_balancedDF(df, balance:bool, n_balance, single_class:bool, type:str):
     if single_class:
         dummy_df = pd.DataFrame(dummy_df['1'])
         dummy_df.rename(columns={'1':'presence'})
-    return(dummy_df)
+    neg_pos_ratio = n_neg/n_pos
+    return(dummy_df, neg_pos_ratio)
 #---
 
 
@@ -316,16 +326,20 @@ class EarlyStopping:
         self.early_stop = False
         self.counter = 0
 
-    def __call__(self, val_loss, val_acc, val_prc, val_rec):
+    def __call__(self, val_loss, val_acc, val_prc, val_rec, val_acc_macro, val_spc):
         score = -val_loss
         acc = val_acc
         prc = val_prc
         rec = val_rec
+        macro_acc = val_acc_macro
+        spc = val_spc
         if self.best_score is None:
             self.best_score = score
             self.best_acc = acc
             self.best_prc = prc
             self.best_rec = rec
+            self.best_macro_acc = macro_acc
+            self.best_spc = spc
         elif score < self.best_score + self.delta:
             self.counter += 1
             if self.counter >= self.patience:
@@ -336,6 +350,8 @@ class EarlyStopping:
             self.best_acc = acc
             self.best_prc = prc
             self.best_rec = rec
+            self.best_macro_acc = macro_acc
+            self.best_spc = spc
             self.counter = 0
 
 
