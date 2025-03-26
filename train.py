@@ -40,6 +40,7 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
     #model = torch.nn.DataParallel(model)
 
     # Define the loss function, optimizer, lr scheduler, and early stopper
+    # criterions multiplied by 0.5 to reduce false positives
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.5])).to(device)
     criterion_eval = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([val_ratio*0.5])).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
