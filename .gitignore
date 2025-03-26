@@ -3,3 +3,4 @@ troubleshoot.ipynb
 wandb
 final.py
 *.pth
+*.gitignore
