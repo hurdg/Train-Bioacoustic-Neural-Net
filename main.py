@@ -6,6 +6,8 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import StratifiedGroupKFold
 
+from sklearn.model_selection import StratifiedGroupKFold
+
 import wandb
 import os
 
@@ -15,6 +17,7 @@ from train import train
 
 # Define sweep configuration
 sweep_configuration = {
+    "name": "weto",
     "name": "weto",
     "method": "grid",
     #"metric": {"goal": "maximize", "name": "validation.f1"},
@@ -37,6 +40,7 @@ sweep_configuration = {
                 'add_noise_bypass' : {"values": [True, False]},
                 'rescale_bypass' : {"values": [True, False]}, 
                 'random_affine_bypass' : {"values": [True]},
+                'random_affine_bypass' : {"values": [True]},
 
                 #Hyperparameters
                 'dropout'  : {"values": [False]},
@@ -52,6 +56,7 @@ sweep_configuration = {
                 #'momentum' : {"values": [0.9]}, #leaky  Default = 0.9
                 #'weight_decay' : {"values": [0.00025, 0.0005, 0.001]}, #l2 regularization Default = 0.0005
                 
+                'architecture' :{"values": ['resnet34']}, 
                 'architecture' :{"values": ['resnet34']}, 
                 'height' :{"values": [224]}, 
                 'width' :{"values": [224]},
@@ -69,6 +74,7 @@ def cross_validate():
     #Set name of run
     count = get_count()
     sweep_run_name = " ".join(['weto','run', str(count)])
+    sweep_run_name = " ".join(['weto','run', str(count)])
 
     sweep_run = wandb.init()
     sweep_run.name = sweep_run_name
@@ -79,10 +85,11 @@ def cross_validate():
     wandb.sdk.wandb_setup._setup(_reset=True)
 #--
 
-    val_metrics = {'val_acc':[], 'val_prc':[], 'val_rec':[], 'val_loss':[]}
+    val_metrics = {'val_acc':[], 'val_prc':[], 'val_rec':[], 'val_spc':[], 'val_macro_acc':[],'val_loss':[]}
     train_metrics = {'train_acc':[], 'train_prc':[], 'train_rec':[], 'train_loss': []}
 
     #Get all training data
+    labeled_df = get_TrainData(data_dir = os.path.join(os.path.dirname(os.getcwd()), 'data2'))
     labeled_df = get_TrainData(data_dir = os.path.join(os.path.dirname(os.getcwd()), 'data2'))
 
     #Split for cross validation, stratify with respect to presence
@@ -98,7 +105,7 @@ def cross_validate():
         val_dict, train_dict = train(   train_dataloader, 
                                         valid_dataloader, 
                                         config,
-                                        sweep_id, sweep_run_name, fold)
+                                        sweep_id, sweep_run_name, fold, val_ratio)
         for key, value in val_dict.items():
             val_metrics[key].append(value)
 
@@ -112,6 +119,8 @@ def cross_validate():
                        val_precision=sum(val_metrics['val_prc']) / len(val_metrics['val_prc']),
                        val_recall=sum(val_metrics['val_rec']) / len(val_metrics['val_rec']),
                        val_loss=sum(val_metrics['val_loss']) / len(val_metrics['val_loss']),
+                       val_specificity=sum(val_metrics['val_spc']) / len(val_metrics['val_spc']),
+                       val_macro_accuracy=sum(val_metrics['val_macro_acc']) / len(val_metrics['val_macro_acc']),
                        val_specificity=sum(val_metrics['val_spc']) / len(val_metrics['val_spc']),
                        val_macro_accuracy=sum(val_metrics['val_macro_acc']) / len(val_metrics['val_macro_acc']),
                        train_accuracy=sum(train_metrics['train_acc']) / len(train_metrics['train_acc']),
@@ -136,6 +145,7 @@ def main():
 
         #Initiate a new sweep with specified parameters (above)
         wandb.login()
+        sweep_id = wandb.sweep(sweep_configuration, project='weto')
         sweep_id = wandb.sweep(sweep_configuration, project='weto')
         wandb.agent(sweep_id, function=cross_validate)
 

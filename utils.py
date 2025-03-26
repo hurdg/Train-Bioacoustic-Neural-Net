@@ -98,7 +98,8 @@ def get_balancedDF(df, balance:bool, n_balance, single_class:bool, type:str):
     if single_class:
         dummy_df = pd.DataFrame(dummy_df['1'])
         dummy_df.rename(columns={'1':'presence'})
-    return(dummy_df)
+    neg_pos_ratio = n_neg/n_pos
+    return(dummy_df, neg_pos_ratio)
 #---
 
 

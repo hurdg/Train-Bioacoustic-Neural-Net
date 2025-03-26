@@ -5,7 +5,7 @@ import torchmetrics
 
 from utils import EarlyStopping, get_model, ConfigureResnet
 
-def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, fold):
+def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, fold, val_ratio):
     
     #Fold name dict converter
     abc_dict = {'1':"a", '2':'b', '3':'c', '4':'d', '5':'e'}
@@ -41,7 +41,7 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
 
     # Define the loss function, optimizer, lr scheduler, and early stopper
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([0.5])).to(device)
-    criterion_eval = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([1])).to(device)
+    criterion_eval = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([val_ratio*0.5])).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     early_stopping = EarlyStopping(patience=stop_patience, delta=stop_delta)
 
@@ -56,6 +56,8 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
         val_rec_m = torchmetrics.classification.BinaryRecall().to(device)
         train_prc_m = torchmetrics.classification.BinaryPrecision().to(device)
         val_prc_m = torchmetrics.classification.BinaryPrecision().to(device)
+        val_spc_m =  torchmetrics.classification.BinarySpecificity().to(device)
+
         val_spc_m =  torchmetrics.classification.BinarySpecificity().to(device)
 
         running_vloss = 0.0
@@ -112,12 +114,14 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
                 #--------------------------
                 output = model(inputs)
                 val_loss = criterion_eval(output, labels.float())
+                val_loss = criterion_eval(output, labels.float())
                 running_vloss += val_loss.item() * inputs.size(0)
 
                 #Metric on current batch
                 val_acc = val_acc_m(output, labels)
                 val_rec = val_rec_m(output, labels)
                 val_prc = val_prc_m(output, labels)
+                val_spc = val_spc_m(output, labels)
                 val_spc = val_spc_m(output, labels)
                 
             #Calculate and print metrics for every epoch
@@ -127,7 +131,11 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
             val_prc = val_prc_m.compute()
             val_spc = val_spc_m.compute()
             val_mac_acc = (val_rec.item()+val_spc.item())/2            
+            val_spc = val_spc_m.compute()
+            val_mac_acc = (val_rec.item()+val_spc.item())/2            
             print(f'''Epoch {epoch+1}/{num_epochs}, Val Loss: {avg_val_loss:.4f}''')
+            print(f'''Val Macro Accuracy {val_mac_acc:.4f}, Val Micro Accuracy: {val_acc.item():.4f}''')
+            print(f'''Val Recall: {val_rec.item():.4f}, Val Specificity {val_spc.item():.4f}, Val Precision: {val_prc.item():.4f} \n ''')
             print(f'''Val Macro Accuracy {val_mac_acc:.4f}, Val Micro Accuracy: {val_acc.item():.4f}''')
             print(f'''Val Recall: {val_rec.item():.4f}, Val Specificity {val_spc.item():.4f}, Val Precision: {val_prc.item():.4f} \n ''')
         
@@ -135,8 +143,10 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
         #Log epoch metrics to wandb
         run.log(dict(epoch = epoch+1, train_accuracy = train_acc, train_precision = train_prc, train_recall = train_rec, train_loss = avg_train_loss,
         val_accuracy=val_acc, val_precision = val_prc, val_recall = val_rec, val_specificty = val_spc, val_macro_accuracy = val_mac_acc, val_loss = avg_val_loss))
+        val_accuracy=val_acc, val_precision = val_prc, val_recall = val_rec, val_specificty = val_spc, val_macro_accuracy = val_mac_acc, val_loss = avg_val_loss))
         
         #Stop model if val_loss hasn't decrease by more than X within the last X epochs.
+        early_stopping(avg_val_loss, val_acc, val_prc, val_rec, val_mac_acc, val_spc)
         early_stopping(avg_val_loss, val_acc, val_prc, val_rec, val_mac_acc, val_spc)
         if early_stopping.early_stop:
             print("Early stopping")
