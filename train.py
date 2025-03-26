@@ -10,9 +10,10 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
     #Fold name dict converter
     abc_dict = {'1':"a", '2':'b', '3':'c', '4':'d', '5':'e'}
     
-    # Set device
+    #Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    #Initiate 'Weights and Biases' run
     run_name = f'{sweep_run_name}-{abc_dict[str(fold)]}'
     run = wandb.init(
         group=sweep_id,
@@ -23,7 +24,7 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
     )
 
 
-    # Set hyperparameters
+    #Define hyperparameter values for run iteration
     num_epochs = config['epochs']
     batch_size = config['batch_size']
     weight_decay = config['weight_decay']
@@ -31,12 +32,11 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
     stop_patience = config['stop_patience']
     stop_delta = config['stop_delta']
 
-    #get configured model
-    # = get_model(config, device)
-    model = ConfigureResnet(architecture = config['architecture'], dropout = config['dropout'],  dropout_rate=0.5)
+    #Get configured model
+    model = ConfigureResnet(architecture = config['architecture'], dropout = config['dropout'],  dropout_rate=config['dropout_rate'])
     model.to(device)
 
-    # Parallelize training across multiple GPUs
+    #Option to arallelize training across multiple GPUs
     #model = torch.nn.DataParallel(model)
 
     # Define the loss function, optimizer, lr scheduler, and early stopper
@@ -65,27 +65,27 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
     # ----------------------------------------------------------------
         print("Training...")
         for i, (inputs, labels) in tqdm(enumerate(train_dataloader)):
-            # Move input and label tensors to the device
+            #Move input and label tensors to the device
             inputs = inputs.to(device)
             labels = labels.to(device)
-            # Zero out the optimizer
+            #Zero out the optimizer
             optimizer.zero_grad()
 
-            # Forward pass
+            #Forward pass
             outputs = model(inputs)
             train_loss = criterion(outputs, labels.float())
             running_tloss += train_loss.item() * inputs.size(0)
 
-            # Backward pass
+            #Backward pass
             train_loss.backward()
             optimizer.step()
 
-            # metric on current batch
+            #Metric on current batch
             train_acc = train_acc_m(outputs, labels)
             train_rec = train_rec_m(outputs, labels)
             train_prc = train_prc_m(outputs, labels)
             
-        # Calculate and print metrics for every epoch
+        #Calculate and print metrics for every epoch
         avg_train_loss = running_tloss / (i + 1)
         train_acc = train_acc_m.compute()
         train_rec = train_rec_m.compute()
@@ -99,7 +99,7 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
         model.eval()
         print("Validating...")
         with torch.no_grad():
-            #  iterating through batches
+            #Iterate through batches
             for i, (inputs, labels) in tqdm(enumerate(valid_dataloader)):
                 #--------------------------------------
                 #  sending images and labels to device
@@ -108,19 +108,19 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
                 labels = labels.to(device)
 
                 #--------------------------
-                #  making classsifications
+                # Make classsifications
                 #--------------------------
                 output = model(inputs)
                 val_loss = criterion_eval(output, labels.float())
                 running_vloss += val_loss.item() * inputs.size(0)
 
-                # metric on current batch
+                #Metric on current batch
                 val_acc = val_acc_m(output, labels)
                 val_rec = val_rec_m(output, labels)
                 val_prc = val_prc_m(output, labels)
                 val_spc = val_spc_m(output, labels)
                 
-            # Calculate and print metrics for every epoch
+            #Calculate and print metrics for every epoch
             avg_val_loss = running_vloss / (i + 1)
             val_acc = val_acc_m.compute()
             val_rec = val_rec_m.compute()
@@ -142,15 +142,14 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
             print("Early stopping")
             break
 
-    #log BEST val metrics from each run to be used in cross val average
+    #Log BEST val metrics from each run to be used in cross val average
     val_dict = {'val_acc': early_stopping.best_acc, 'val_prc':early_stopping.best_prc, 'val_rec': early_stopping.best_rec, 'val_loss': early_stopping.best_score,
                 'val_spc': early_stopping.best_spc, 'val_macro_acc': early_stopping.best_macro_acc}
     train_dict = {'train_acc':train_acc, 'train_prc': train_prc, 'train_rec': train_rec, 'train_loss': avg_train_loss}
 
     import shutil
 
-    # uncomment to remove the training files
-    # shutil.rmtree('./annotated_data')
+    #Try to remove W&B files
     try:
         shutil.rmtree('./wandb')
         shutil.rmtree('./model_training_checkpoints')
@@ -161,6 +160,7 @@ def train(train_dataloader, valid_dataloader, config, sweep_id, sweep_run_name, 
 
     print(f'Finished Training fold {fold}')
     
+    #Pass logged metrics up to main program
     return(val_dict, train_dict)
 
 
