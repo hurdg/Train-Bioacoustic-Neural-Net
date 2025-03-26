@@ -1,23 +1,17 @@
 import torch
-import torch.nn as nn
-
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import StratifiedKFold
-from sklearn.model_selection import StratifiedGroupKFold
-
-from sklearn.model_selection import StratifiedGroupKFold
-
 import wandb
 import os
+import warnings
+
+from sklearn.model_selection import StratifiedGroupKFold
 
 from utils import get_count, get_TrainData, get_dataLoader, reset_wandb_env, get_balancedDF
 from train import train
 
 
-# Define sweep configuration
+# Define sweep configuration - arrays of hyperparameter values
+# Method = 'grid' will initate a grid search across all possible configurations
 sweep_configuration = {
-    "name": "weto",
     "name": "weto",
     "method": "grid",
     #"metric": {"goal": "maximize", "name": "validation.f1"},
@@ -34,7 +28,7 @@ sweep_configuration = {
                 #Data Augmentation
                 'sample_rate' : {"values": [16000]},
                 'random_trim' : {"values": [True]},
-                'bandpass_bypass' : {"values": [True]}, #must remain off for 
+                'bandpass_bypass' : {"values": [True]}, #must remain off for audio sampling < 
                 'time_mask_bypass' : {"values": [False]},
                 'frequency_mask_bypass' : {"values": [False]},
                 'add_noise_bypass' : {"values": [True, False]},
@@ -42,27 +36,28 @@ sweep_configuration = {
                 'random_affine_bypass' : {"values": [True]},
                 'random_affine_bypass' : {"values": [True]},
 
-                #Hyperparameters
+                #NeuralNet Hyperparameters
                 'dropout'  : {"values": [False]},
+                'dropout_rate'   : {"values": [0,0.05,0.1]}, 
                 'weight_decay'  : {"values": [1e-2]},
-                #'learning_rate' : {"values": [1e-4, 1e-5]},
                 'learning_rate' : {"values": [1e-3, 1e-4, 1e-5]},
                 'stop_patience'  : {"values": [10]},
                 'stop_delta'  : {"values": [0]},
 
-                #'lr' : {"values": [0.005, 0.01, 0.02]}, # Default = 0.01
-                #'lr_cooling_factor' : {"values": [0.035, 0.7, 0.14]}, # Default = 0.7
-                #'lr_update_interval' : {"values": [5,10,20]}, #in epochs  Default = 10
-                #'momentum' : {"values": [0.9]}, #leaky  Default = 0.9
-                #'weight_decay' : {"values": [0.00025, 0.0005, 0.001]}, #l2 regularization Default = 0.0005
-                
-                'architecture' :{"values": ['resnet34']}, 
-                'architecture' :{"values": ['resnet34']}, 
+                'architecture' :{"values": ['resnet34', 'resnet50', 'resnet101']}, 
                 'height' :{"values": [224]}, 
                 'width' :{"values": [224]},
                 "n_balance":{"values":[1000]},
                 "epochs":{"values":[100]},
                 "batch_size":{"values":[32]}, #must keep low when using dropout(inplace=False)!!!
+
+                #Opensoundscape hyperparameters
+                #'lr' : {"values": [0.005, 0.01, 0.02]}, # Default = 0.01
+                #'lr_cooling_factor' : {"values": [0.035, 0.7, 0.14]}, # Default = 0.7
+                #'lr_update_interval' : {"values": [5,10,20]}, #in epochs  Default = 10
+                #'momentum' : {"values": [0.9]}, #leaky  Default = 0.9
+                #'weight_decay' : {"values": [0.00025, 0.0005, 0.001]}, #l2 regularization Default = 0.0005
+
     },
 }
 
@@ -74,8 +69,8 @@ def cross_validate():
     #Set name of run
     count = get_count()
     sweep_run_name = " ".join(['weto','run', str(count)])
-    sweep_run_name = " ".join(['weto','run', str(count)])
 
+    #Initiate run within Weights and Biases (wandb) platform
     sweep_run = wandb.init()
     sweep_run.name = sweep_run_name
     sweep_id = sweep_run.sweep_id
@@ -84,21 +79,22 @@ def cross_validate():
     sweep_run.finish()
     wandb.sdk.wandb_setup._setup(_reset=True)
 #--
-
+    #Initiate dict to log metrics
     val_metrics = {'val_acc':[], 'val_prc':[], 'val_rec':[], 'val_spc':[], 'val_macro_acc':[],'val_loss':[]}
     train_metrics = {'train_acc':[], 'train_prc':[], 'train_rec':[], 'train_loss': []}
 
-    #Get all training data
-    labeled_df = get_TrainData(data_dir = os.path.join(os.path.dirname(os.getcwd()), 'data2'))
-    labeled_df = get_TrainData(data_dir = os.path.join(os.path.dirname(os.getcwd()), 'data2'))
+    #Get all training data - assumes recordings are stored in parent directory as data > weto> positive / negative
+    labeled_df = get_TrainData(data_dir = os.path.join(os.path.dirname(os.getcwd()), 'data'))
 
-    #Split for cross validation, stratify with respect to presence
-    #skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    #Split for cross validation, stratify with respect to presence, and resample with/without replacement for train/validation, respectively (if needed).
     sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
     for fold, (train_idx, val_idx) in enumerate(sgkf.split(labeled_df, labeled_df['presence'], labeled_df['group']), 1):
-        train_df = get_balancedDF(labeled_df.iloc[train_idx], balance=True, n_balance = config['n_balance'], single_class=True, type = 'train')
-        valid_df = get_balancedDF(labeled_df.iloc[val_idx], balance=False, n_balance = config['n_balance'], single_class=True, type = 'validation')
+        train_df, _ = get_balancedDF(labeled_df.iloc[train_idx], balance=True, n_balance = config['n_balance'], single_class=True, type = 'train')
+        valid_df, val_ratio = get_balancedDF(labeled_df.iloc[val_idx], balance=False, n_balance = config['n_balance'], single_class=True, type = 'validation')
+        
         reset_wandb_env()
+
+        #create pytorch data loader for train and val datasets
         train_dataloader = get_dataLoader(train_df, config, train=True)
         valid_dataloader = get_dataLoader(valid_df, config, train=False)
 
@@ -114,7 +110,8 @@ def cross_validate():
 
     # resume the sweep run
     sweep_run = wandb.init(id=sweep_run_id, resume="must")
-    # log metric to sweep run
+
+    # log performance metrics to sweep run
     sweep_run.log(dict(val_accuracy=sum(val_metrics['val_acc']) / len(val_metrics['val_acc']),
                        val_precision=sum(val_metrics['val_prc']) / len(val_metrics['val_prc']),
                        val_recall=sum(val_metrics['val_rec']) / len(val_metrics['val_rec']),
@@ -132,20 +129,18 @@ def cross_validate():
 
 
 def main():
-    import warnings
     warnings.filterwarnings('ignore')
 
     # Define counter variable from which to begin sequential run naming (count will begin at specified 'counter' value +1)
     # Leave at 0, unless restarting a crashed/terminated sweep    
     counter=0
 
-    # Decision to continue previous sweep (True = Continue)
+    # Decision to continue a previous sweep (True = Continue)
     rerun = False
     if not rerun:
 
         #Initiate a new sweep with specified parameters (above)
         wandb.login()
-        sweep_id = wandb.sweep(sweep_configuration, project='weto')
         sweep_id = wandb.sweep(sweep_configuration, project='weto')
         wandb.agent(sweep_id, function=cross_validate)
 
